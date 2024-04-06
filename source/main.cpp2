@@ -1,0 +1,45 @@
+// vi: set ft=cpp2:
+
+#include "pong.h2"
+
+#include <SFML/Window.hpp>
+#include <SFML/Graphics.hpp>
+#include <spdlog/sinks/stdout_color_sinks.h>
+#include <spdlog/spdlog.h>
+
+main: () = {
+    // initialize logger
+    spdlog::set_default_logger(spdlog::stderr_color_st("logger"));
+    spdlog::set_pattern("[%H:%M:%S %z] [%^-%L-%$] %v");
+    spdlog::set_level(spdlog::level::info);
+
+    // straigt to sfml
+    windowSize: sf::VideoMode    = (800, 600);
+    window    : sf::RenderWindow = (windowSize, "Learn (SFML + CPP2): Pong", sf::Style::Titlebar);
+
+    window.setVerticalSyncEnabled(true);
+    _ = window.setActive(true);
+
+    while window.isOpen() {
+        event: sf::Event = ();
+        while window.pollEvent(event) {
+            E: type == sf::Event;
+            K: type == sf::Keyboard::Key;
+
+            // sadly, `inspect` still can't be used for statement
+            if event.type == E::Closed {
+                window.close();
+            } else if event.type == E::KeyPressed {
+                if event.key.code == K::Q {
+                    window.close();
+                }
+            }
+        }
+
+        window.clear(sf::Color::Black);
+
+        // draw...
+
+        window.display();
+    }
+}
