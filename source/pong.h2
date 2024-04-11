@@ -4,7 +4,7 @@
 #include <SFML/Graphics.hpp>
 #include <spdlog/spdlog.h>
 
-#include <deque>        // for some reason this header is not included by cppfront -in flag
+#include <deque>        // for some reason this header is not included by cppfront -include-std flag
 
 pong: namespace =
 {
@@ -14,7 +14,7 @@ pong: namespace =
         from.y.narrow<To>(),
     );
 
-    Sprites: @struct type = {
+    GameObjects: @struct type = {
         ASSETS_DIR  : std::string == "assets";
         TEXTURES_DIR: std::string == "assets/textures";
         FONTS_DIR   : std::string == "assets/fonts";
@@ -27,9 +27,12 @@ pong: namespace =
         m_ballTexture  : sf::Texture     = ();
         m_paddle       : sf::Sprite      = ();
         m_ball         : sf::CircleShape = sf::CircleShape(1.0f, 30);
+        m_font         : sf::Font        = ();
+        m_leftScore    : sf::Text        = ();
+        m_rightScore   : sf::Text        = ();
 
-        from: (width: u32) -> Sprites = {
-            sprites := Sprites();
+        from: (width: u32) -> GameObjects = {
+            sprites := GameObjects();
 
             paddleTexPath := TEXTURES_DIR + "/paddle.png";
             if !sprites.m_paddleTexture.loadFromFile(paddleTexPath) {
@@ -46,6 +49,21 @@ pong: namespace =
             } else {
                 spdlog::info("Successfully loaded texture: {:?}", ballTexPath);
                 initBall(sprites.m_ball, sprites.m_ballTexture, calculateBallSize(width));
+            }
+
+            fontPath := FONTS_DIR + "/JetBrainsMono-Regular.ttf";
+            if !sprites.m_font.loadFromFile(fontPath) {
+                spdlog::error("Failed to load font: {:?}", fontPath);
+            } else {
+                spdlog::info("Successfully loaded font: {:?}", fontPath);
+
+                sprites.m_leftScore.setFont(sprites.m_font);
+                sprites.m_leftScore.setCharacterSize(24);
+                sprites.m_leftScore.setFillColor(sf::Color::White);
+
+                sprites.m_rightScore.setFont(sprites.m_font);
+                sprites.m_rightScore.setCharacterSize(24);
+                sprites.m_rightScore.setFillColor(sf::Color::White);
             }
 
             return sprites;
@@ -84,19 +102,18 @@ pong: namespace =
         initBall: (inout ball: sf::CircleShape, texture: sf::Texture, size: float) = {
             ball.setTexture(texture&);
             ball.setRadius(size / 2.0f);
+            ball.setOrigin(size / 2.0f, size / 2.0f);
         }
     }
 
     GameState: @struct type = {
-        PADDLE_INITIAL_LIVES: u32   == 3;
-        PADDLE_SPEED        : float == 1.0f;
-        BALL_SPEED          : float == 0.5f;
+        PADDLE_SPEED        : float == 0.75f;
+        BALL_SPEED          : float == 0.75f;
 
         Paddle: @struct type = {
             m_position: sf::Vector2f = ();
             m_speed   : float        = 0.0f;
             m_score   : u32          = 0;
-            m_lives   : u32          = PADDLE_INITIAL_LIVES;
         }
 
         Ball: @struct type = {
@@ -132,44 +149,42 @@ pong: namespace =
         }
 
         PADDLE_MARGIN: float == 0.02f;
+        TEXT_MARGIN  : float == 0.02f;
 
-        m_paused : bool = false;
-        m_width  : u32;
-        m_height : u32;
-        m_sprites: Sprites;
-        m_state  : GameState;
-
-        m_moveQueue: std::deque<std::pair<WhichPaddle, WhichMove>> = ();
-
-        m_random: std::mt19937 = (std::time(nullptr).narrow<std::mt19937::result_type>());
+        m_paused       : bool = false;
+        m_width        : u32;
+        m_height       : u32;
+        m_sprites      : GameObjects;
+        m_state        : GameState;
+        m_currentPaddle: WhichPaddle = WhichPaddle::Right;
+        m_moveQueue    : std::deque<std::pair<WhichPaddle, WhichMove>> = ();
+        m_random       : std::mt19937 = (std::time(nullptr).narrow<std::mt19937::result_type>());
 
         operator=: (out this, width: u32, height: u32) = {
             m_width   = width;
             m_height  = height;
-            m_sprites = Sprites::from(width);
+            m_sprites = GameObjects::from(width);
             m_state   = GameState::from(width);
 
             initializeState();
+            pause(true);
         }
 
         initializeState: (inout this) = {
-            left       := m_width.narrow<float>()  * PADDLE_MARGIN;
+            left       := m_width.narrow<float>() * PADDLE_MARGIN;
             right      := m_width.narrow<float>() * (1.0f - PADDLE_MARGIN);
             halfHeight := m_height.narrow<float>() / 2.0f;
-            halfWidth  := m_width.narrow<float>() / 2.0f;
+            halfWidth  := m_width.narrow<float>()  / 2.0f;
 
             m_state.m_left.m_position  = sf::Vector2f(left, halfHeight);
             m_state.m_right.m_position = sf::Vector2f(right, halfHeight);
             m_state.m_ball.m_position  = sf::Vector2f(halfWidth, halfHeight);
 
-            while true {
-                angle := randomAngle();
-                if 45.0f < angle < 135.0f || 225.0f < angle < 315.0f { continue; }
-                m_state.m_ball.m_angle = angle;
-                break;
+            (side := m_currentPaddle, angleRange := 90.0f) {
+                angle := std::fmod(randomAngle(), angleRange);
+                if side == WhichPaddle::Left { m_state.m_ball.m_angle = angle + 135.0f;  }
+                else                         { m_state.m_ball.m_angle = angle - 45.0f;   }
             }
-
-            pause(true);
         }
 
         movePaddle: (inout this, paddle: WhichPaddle, moveset: WhichMove) = {
@@ -178,6 +193,26 @@ pong: namespace =
         }
 
         update: (inout this, deltaTime: float) = {
+            textCenter := :(text: *sf::Text) -> sf::Vector2f = {
+                bounds := text*.getLocalBounds();
+                return sf::Vector2f(bounds.width / 2.0f, bounds.height / 2.0f);
+            };
+
+            // can be optimized by caching the text/score
+            (inout t := m_sprites.m_leftScore) {
+                t.setString("P1: (m_state.m_left.m_score)$");
+                t.setOrigin(textCenter(t&));
+                t.setStyle(sf::Text::Bold);
+            }
+
+            // can be optimized by caching the text/score
+            (inout t := m_sprites.m_rightScore) {
+                t.setString("P2: (m_state.m_right.m_score)$");
+                t.setOrigin(textCenter(t&));
+                t.setStyle(sf::Text::Bold);
+            }
+
+            // other parts can be skipped if paused
             if m_paused { return; }
 
             paddleMove := :(inout paddle: GameState::Paddle, moveset: WhichMove, deltaTime: float) = {
@@ -188,7 +223,7 @@ pong: namespace =
             for m_moveQueue do (movement) {
                 paddle  := movement.first;
                 moveset := movement.second;
-                if paddle == WhichPaddle::Left { paddleMove(m_state.m_left, moveset, deltaTime); }
+                if paddle == WhichPaddle::Left { paddleMove(m_state.m_left,  moveset, deltaTime); }
                 else                           { paddleMove(m_state.m_right, moveset, deltaTime); }
             }
             m_moveQueue.clear();
@@ -206,8 +241,8 @@ pong: namespace =
                     b.m_position.x += b.m_speed * std::cos(b.m_angle.toRadians()) * deltaTime;
                     b.m_position.y += b.m_speed * std::sin(b.m_angle.toRadians()) * deltaTime;
                 } else if status.is_outOfBound() {
-                    if status.outOfBound() == WhichPaddle::Left { m_state.m_right.m_score += 1; }
-                    else                                        { m_state.m_left.m_score += 1; }
+                    if status.outOfBound() == WhichPaddle::Left { m_state.m_right.m_score += 1; m_currentPaddle = WhichPaddle::Right; }
+                    else                                        { m_state.m_left.m_score  += 1; m_currentPaddle = WhichPaddle::Left;  }
                     initializeState();
                     pause(true);
                 }
@@ -236,6 +271,24 @@ pong: namespace =
 
             ballTransform := sf::Transform().translate(m_state.m_ball.m_position);
             target*.draw(m_sprites.m_ball, ballTransform);
+
+            textPos := :(paddle: WhichPaddle) -> sf::Vector2f = {
+                pos: sf::Vector2f = ();
+                if paddle == WhichPaddle::Left {
+                    pos.x = m_width.narrow<float>() * 0.25f;
+                    pos.y = m_height.narrow<float>() * TEXT_MARGIN;
+                } else {
+                    pos.x = m_width.narrow<float>() * 0.75f;
+                    pos.y = m_height.narrow<float>() * TEXT_MARGIN;
+                }
+                return pos;
+            };
+
+            leftScoreTransform := sf::Transform().translate(textPos(WhichPaddle::Left));
+            target*.draw(m_sprites.m_leftScore, leftScoreTransform);
+
+            rightScoreTransform := sf::Transform().translate(textPos(WhichPaddle::Right));
+            target*.draw(m_sprites.m_rightScore, rightScoreTransform);
         }
 
         private randomAngle: (inout this) -> float = {
@@ -271,7 +324,6 @@ pong: namespace =
 
             ballTransform := sf::Transform().translate(m_state.m_ball.m_position);
             ballRect := ballTransform.transformRect(m_sprites.m_ball.getGlobalBounds());
-            ballPos  := ballRect.getPosition();
 
             reflectFromPaddle := :(paddle: GameState::Paddle) -> float = {
                 n: namespace == std::numbers;
@@ -279,8 +331,9 @@ pong: namespace =
                 x := (m_state.m_ball.m_position.x)$ - paddle.m_position.x;
                 y := (m_state.m_ball.m_position.y)$ - paddle.m_position.y;
 
-                angle := std::atan2(y * Sprites::BLOCK_ASPECT_RATIO, x);    // bias the angle a bit
-                angle = std::fmod((angle + 2.0f * n::pi_v<float>), 2.0f * n::pi_v<float>);
+                fullCircle := 2.0f * n::pi_v<float>;
+                angle := std::atan2(y * GameObjects::BLOCK_ASPECT_RATIO, x);    // bias the angle a bit
+                angle = std::fmod((angle + fullCircle), fullCircle);
 
                 return angle.toDegrees();
             };
