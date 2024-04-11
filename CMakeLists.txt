@@ -21,7 +21,7 @@ find_package(range-v3 CONFIG REQUIRED)
 
 include(cmake/cppfront.cmake)
 
-set(SOURCES source/main.cpp2)
+set(SOURCES source/main.cpp2 source/pong.h2)
 
 # cmake-format: off
 cppfront_compile(main

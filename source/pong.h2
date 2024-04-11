@@ -1,0 +1,308 @@
+// vi: set ft=cpp2:
+
+#include <SFML/Window.hpp>
+#include <SFML/Graphics.hpp>
+#include <spdlog/spdlog.h>
+
+#include <deque>        // for some reason this header is not included by cppfront -in flag
+
+pong: namespace =
+{
+    narrow: <To>(from) -> To = cpp2::unsafe_narrow<To>(from);
+    cast: <To, From>(from: sf::Vector2<From>) -> sf::Vector2<To> = (
+        from.x.narrow<To>(),
+        from.y.narrow<To>(),
+    );
+
+    Sprites: @struct type = {
+        ASSETS_DIR  : std::string == "assets";
+        TEXTURES_DIR: std::string == "assets/textures";
+        FONTS_DIR   : std::string == "assets/fonts";
+
+        BLOCK_SIZE        : float == 0.02f;
+        BALL_SIZE         : float == 0.02f;
+        BLOCK_ASPECT_RATIO: float == 1.0f / 6.0f;
+
+        m_paddleTexture: sf::Texture     = ();
+        m_ballTexture  : sf::Texture     = ();
+        m_paddle       : sf::Sprite      = ();
+        m_ball         : sf::CircleShape = sf::CircleShape(1.0f, 30);
+
+        from: (width: u32) -> Sprites = {
+            sprites := Sprites();
+
+            paddleTexPath := TEXTURES_DIR + "/paddle.png";
+            if !sprites.m_paddleTexture.loadFromFile(paddleTexPath) {
+                spdlog::error("Failed to load texture: {:?}", paddleTexPath);
+            } else {
+                spdlog::info("Successfully loaded texture: {:?}", paddleTexPath);
+                sprites.m_paddleTexture.setRepeated(true);
+                initPaddle(sprites.m_paddle, sprites.m_paddleTexture, calculatePaddleSize(width));
+            }
+
+            ballTexPath := TEXTURES_DIR + "/ball.png";
+            if !sprites.m_ballTexture.loadFromFile(ballTexPath) {
+                spdlog::error("Failed to load texture: {:?}", ballTexPath);
+            } else {
+                spdlog::info("Successfully loaded texture: {:?}", ballTexPath);
+                initBall(sprites.m_ball, sprites.m_ballTexture, calculateBallSize(width));
+            }
+
+            return sprites;
+        }
+
+        calculatePaddleSize: (widthRef: u32) -> sf::Vector2u = {
+            width  := widthRef.narrow<float>() * BLOCK_SIZE;
+            height := width / BLOCK_ASPECT_RATIO;
+            return sf::Vector2f(width, height).cast<u32>();
+        }
+
+        initPaddle: (inout paddle: sf::Sprite, texture: sf::Texture, refSize: sf::Vector2u) = {
+            texSize := texture.getSize();
+
+            texRect: sf::IntRect = ();
+            if BLOCK_ASPECT_RATIO < 1.0f {
+                texRect = sf::IntRect(0, 0, texSize.x, narrow<i32>(narrow<float>(texSize.y) / BLOCK_ASPECT_RATIO));
+            } else {
+                texRect = sf::IntRect(0, 0, narrow<i32>(narrow<float>(texSize.x) * BLOCK_ASPECT_RATIO), texSize.y);
+            }
+
+            paddle = sf::Sprite(texture, texRect);
+            paddle.setTexture(texture);
+            paddle.setOrigin(texRect.width.narrow<float>() / 2.0f, texRect.height.narrow<float>() / 2.0f);
+            paddle.setScale(sf::Vector2f(
+                refSize.x.narrow<float>() / texRect.width.narrow<float>(),
+                refSize.y.narrow<float>() / texRect.height.narrow<float>(),
+            ).cast<float>());
+
+        }
+
+        calculateBallSize: (widthRef: u32) -> float = {
+            return widthRef.narrow<float>() * BALL_SIZE;
+        }
+
+        initBall: (inout ball: sf::CircleShape, texture: sf::Texture, size: float) = {
+            ball.setTexture(texture&);
+            ball.setRadius(size / 2.0f);
+        }
+    }
+
+    GameState: @struct type = {
+        PADDLE_INITIAL_LIVES: u32   == 3;
+        PADDLE_SPEED        : float == 1.0f;
+        BALL_SPEED          : float == 0.5f;
+
+        Paddle: @struct type = {
+            m_position: sf::Vector2f = ();
+            m_speed   : float        = 0.0f;
+            m_score   : u32          = 0;
+            m_lives   : u32          = PADDLE_INITIAL_LIVES;
+        }
+
+        Ball: @struct type = {
+            m_position: sf::Vector2f = ();
+            m_speed   : float        = 0.0f;
+            m_angle   : float        = 0.0f;
+        }
+
+        m_left : Paddle = ();
+        m_right: Paddle = ();
+        m_ball : Ball   = ();
+
+        from: (refWidth: u32) -> GameState = {
+            state := GameState();
+            state.m_left.m_speed  = refWidth.narrow<float>() * PADDLE_SPEED;
+            state.m_right.m_speed = refWidth.narrow<float>() * PADDLE_SPEED;
+            state.m_ball.m_speed  = refWidth.narrow<float>() * BALL_SPEED;
+            return state;
+        }
+    }
+
+    WhichPaddle: @enum type = { Left; Right; }
+    WhichMove  : @enum type = { Up; Down; }
+
+    Pong: type = {
+        // Paddle : @enum @print type = { Left; Right; }   // temporary alpha limitation: an object alias cannot yet appear inside a nested type
+        // Moveset: @enum @print type = { Up; Down; }
+
+        BallStatus: @union type = {
+            outOfBound: WhichPaddle;
+            reflect   : float;
+            same      : std::monostate;
+        }
+
+        PADDLE_MARGIN: float == 0.02f;
+
+        m_paused : bool = false;
+        m_width  : u32;
+        m_height : u32;
+        m_sprites: Sprites;
+        m_state  : GameState;
+
+        m_moveQueue: std::deque<std::pair<WhichPaddle, WhichMove>> = ();
+
+        m_random: std::mt19937 = (std::time(nullptr).narrow<std::mt19937::result_type>());
+
+        operator=: (out this, width: u32, height: u32) = {
+            m_width   = width;
+            m_height  = height;
+            m_sprites = Sprites::from(width);
+            m_state   = GameState::from(width);
+
+            initializeState();
+        }
+
+        initializeState: (inout this) = {
+            left       := m_width.narrow<float>()  * PADDLE_MARGIN;
+            right      := m_width.narrow<float>() * (1.0f - PADDLE_MARGIN);
+            halfHeight := m_height.narrow<float>() / 2.0f;
+            halfWidth  := m_width.narrow<float>() / 2.0f;
+
+            m_state.m_left.m_position  = sf::Vector2f(left, halfHeight);
+            m_state.m_right.m_position = sf::Vector2f(right, halfHeight);
+            m_state.m_ball.m_position  = sf::Vector2f(halfWidth, halfHeight);
+
+            while true {
+                angle := randomAngle();
+                if 45.0f < angle < 135.0f || 225.0f < angle < 315.0f { continue; }
+                m_state.m_ball.m_angle = angle;
+                break;
+            }
+
+            pause(true);
+        }
+
+        movePaddle: (inout this, paddle: WhichPaddle, moveset: WhichMove) = {
+            if m_paused { return; }
+            _ = m_moveQueue.emplace_back(paddle, moveset);
+        }
+
+        update: (inout this, deltaTime: float) = {
+            if m_paused { return; }
+
+            paddleMove := :(inout paddle: GameState::Paddle, moveset: WhichMove, deltaTime: float) = {
+                if moveset == WhichMove::Up { paddle.m_position.y -= paddle.m_speed * deltaTime; }
+                else                        { paddle.m_position.y += paddle.m_speed * deltaTime; }
+            };
+
+            for m_moveQueue do (movement) {
+                paddle  := movement.first;
+                moveset := movement.second;
+                if paddle == WhichPaddle::Left { paddleMove(m_state.m_left, moveset, deltaTime); }
+                else                           { paddleMove(m_state.m_right, moveset, deltaTime); }
+            }
+            m_moveQueue.clear();
+
+            (inout b := m_state.m_ball) {
+                b.m_position.x += b.m_speed * std::cos(b.m_angle.toRadians()) * deltaTime;
+                b.m_position.y += b.m_speed * std::sin(b.m_angle.toRadians()) * deltaTime;
+
+                status := inspectBall();
+                if status.is_reflect() {
+                    spdlog::debug("Reflect {} | {}", b.m_angle, status.reflect());
+                    b.m_angle = status.reflect();
+
+                    // undo the last move
+                    b.m_position.x += b.m_speed * std::cos(b.m_angle.toRadians()) * deltaTime;
+                    b.m_position.y += b.m_speed * std::sin(b.m_angle.toRadians()) * deltaTime;
+                } else if status.is_outOfBound() {
+                    if status.outOfBound() == WhichPaddle::Left { m_state.m_right.m_score += 1; }
+                    else                                        { m_state.m_left.m_score += 1; }
+                    initializeState();
+                    pause(true);
+                }
+            }
+        }
+
+        reset: (inout this) = {
+            initializeState();
+            pause(true);
+        }
+
+        pause: (inout this, value: bool) = {
+            m_paused = value;
+        }
+
+        togglePause: (inout this) = {
+            pause(!m_paused);
+        }
+
+        draw: (this, target: *sf::RenderTarget) = {
+            leftTransform := sf::Transform().translate(m_state.m_left.m_position);
+            target*.draw(m_sprites.m_paddle, leftTransform);
+
+            rightTransform := sf::Transform().translate(m_state.m_right.m_position);
+            target*.draw(m_sprites.m_paddle, rightTransform);
+
+            ballTransform := sf::Transform().translate(m_state.m_ball.m_position);
+            target*.draw(m_sprites.m_ball, ballTransform);
+        }
+
+        private randomAngle: (inout this) -> float = {
+            distribution: std::uniform_real_distribution<float> = (0.0f, 360.0f);
+            return distribution(m_random);      // m_random needs to be mutable
+        }
+
+        private toRadians: (angle: float) -> float = {
+            return std::numbers::pi_v<float> * angle / 180.0f;
+        }
+
+        private toDegrees: (angle: float) -> float = {
+            return 180.0f * angle / std::numbers::pi_v<float>;
+        }
+
+        private reflectAngle: (angle: float, horizontal: bool) -> float = {
+            if horizontal { return 180.0f - angle; }
+            else          { return 360.0f - angle; }
+        }
+
+        private inspectBall: (this) -> BallStatus = {
+            status := BallStatus();
+
+            (y := m_state.m_ball.m_position.y, a := m_state.m_ball.m_angle) {
+                if y < 0.0f                     { status.set_reflect(reflectAngle(a, false)); return status; }
+                if y > m_height.narrow<float>() { status.set_reflect(reflectAngle(a, false)); return status; }
+            }
+
+            (x := m_state.m_ball.m_position.x) {
+                if x < 0.0f                    { status.set_outOfBound(WhichPaddle::Left);  return status; }
+                if x > m_width.narrow<float>() { status.set_outOfBound(WhichPaddle::Right); return status; }
+            }
+
+            ballTransform := sf::Transform().translate(m_state.m_ball.m_position);
+            ballRect := ballTransform.transformRect(m_sprites.m_ball.getGlobalBounds());
+            ballPos  := ballRect.getPosition();
+
+            reflectFromPaddle := :(paddle: GameState::Paddle) -> float = {
+                n: namespace == std::numbers;
+
+                x := (m_state.m_ball.m_position.x)$ - paddle.m_position.x;
+                y := (m_state.m_ball.m_position.y)$ - paddle.m_position.y;
+
+                angle := std::atan2(y * Sprites::BLOCK_ASPECT_RATIO, x);    // bias the angle a bit
+                angle = std::fmod((angle + 2.0f * n::pi_v<float>), 2.0f * n::pi_v<float>);
+
+                return angle.toDegrees();
+            };
+
+            leftTransform := sf::Transform().translate(m_state.m_left.m_position);
+            leftRect := leftTransform.transformRect(m_sprites.m_paddle.getGlobalBounds());
+
+            if ballRect.intersects(leftRect) {
+                status.set_reflect(reflectFromPaddle(m_state.m_left));
+                return status;
+            }
+
+            rightTransform := sf::Transform().translate(m_state.m_right.m_position);
+            rightRect := rightTransform.transformRect(m_sprites.m_paddle.getGlobalBounds());
+
+            if ballRect.intersects(rightRect) {
+                status.set_reflect(reflectFromPaddle(m_state.m_right));
+                return status;
+            }
+
+            status.set_same();
+            return status;
+        }
+    }
+}

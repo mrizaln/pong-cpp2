@@ -7,38 +7,90 @@
 #include <spdlog/sinks/stdout_color_sinks.h>
 #include <spdlog/spdlog.h>
 
+printContextInformation: (window: *sf::Window) = {
+    settings := window*.getSettings();
+
+    getAttrStr := :(attr) -> _ = {
+        A: type == sf::ContextSettings::Attribute;
+
+        if attr == A::Default { return std::string("default"); }
+
+        str: std::string = "";
+        if attr == A::Core  { str += "core "; }
+        if attr == A::Debug { str += "debug"; }
+
+        return str;
+    };
+
+    spdlog::debug("context information");
+    spdlog::debug("\tdepth bits        : {}",    settings.depthBits);
+    spdlog::debug("\tstencil bits      : {}",    settings.stencilBits);
+    spdlog::debug("\tantialiasing level: {}",    settings.antialiasingLevel);
+    spdlog::debug("\tsrgb capable      : {}",    settings.sRgbCapable);
+    spdlog::debug("\tcontext version   : {}.{}", settings.majorVersion, settings.minorVersion);
+    spdlog::debug("\tcontext attribute : {}",    getAttrStr(settings.attributeFlags));
+}
+
 main: () = {
-    // initialize logger
     spdlog::set_default_logger(spdlog::stderr_color_st("logger"));
     spdlog::set_pattern("[%H:%M:%S %z] [%^-%L-%$] %v");
-    spdlog::set_level(spdlog::level::info);
+    spdlog::set_level(spdlog::level::debug);
 
-    // straigt to sfml
+    settings: sf::ContextSettings = ();
+    settings.antialiasingLevel = 8;
+
     windowSize: sf::VideoMode    = (800, 600);
-    window    : sf::RenderWindow = (windowSize, "Learn (SFML + CPP2): Pong", sf::Style::Titlebar);
+    window    : sf::RenderWindow = (windowSize, "Learn (SFML + CPP2): Pong", sf::Style::Titlebar, settings);
 
     window.setVerticalSyncEnabled(true);
+    window.setKeyRepeatEnabled(false);
     _ = window.setActive(true);
+    window&.printContextInformation();
+
+    pongGame: pong::Pong = (800, 600);
+
+    now   := std::chrono::steady_clock::now();
+    delta := now - now;
 
     while window.isOpen() {
-        event: sf::Event = ();
-        while window.pollEvent(event) {
+        (copy event := sf::Event()) while window.pollEvent(event) {
             E: type == sf::Event;
             K: type == sf::Keyboard::Key;
 
-            // sadly, `inspect` still can't be used for statement
-            if event.type == E::Closed {
-                window.close();
-            } else if event.type == E::KeyPressed {
-                if event.key.code == K::Q {
-                    window.close();
-                }
+            if event.type == E::Closed { window.close(); }
+
+            if event.type == E::KeyPressed {
+                if event.key.code == K::Q     { window.close();         }
+                if event.key.code == K::R     { pongGame.reset();       }
+                if event.key.code == K::Space { pongGame.togglePause(); }
             }
         }
+
+        (inout p := pongGame) {
+            P: type == pong::WhichPaddle;
+            M: type == pong::WhichMove;
+            K: type == sf::Keyboard::Key;
+
+            k := :(key: K) sf::Keyboard::isKeyPressed(key);
+
+            if k(K::S)    { p.movePaddle(P::Left,  M::Down); }
+            if k(K::W)    { p.movePaddle(P::Left,  M::Up);   }
+            if k(K::Down) { p.movePaddle(P::Right, M::Down); }
+            if k(K::Up)   { p.movePaddle(P::Right, M::Up);   }
+        }
+
+        newNow := std::chrono::steady_clock::now();
+        delta   = newNow - now;
+        now     = newNow;
+
+        FloatSecond: type == std::chrono::duration<float, std::ratio<1, 1>>;
+        deltaTime := std::chrono::duration_cast<FloatSecond>(delta).count();
+        pongGame.update(deltaTime);
 
         window.clear(sf::Color::Black);
 
         // draw...
+        pongGame.draw(window&);
 
         window.display();
     }
