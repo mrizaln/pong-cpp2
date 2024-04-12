@@ -22,16 +22,19 @@ pong: namespace =
         BLOCK_SIZE        : float == 0.02f;
         BALL_SIZE         : float == 0.02f;
         BLOCK_ASPECT_RATIO: float == 1.0f / 6.0f;
+        TEXT_SIZE         : u32   == 32;
+        SEPARATOR_MARGIN  : float == 0.01f;
 
-        m_paddleTexture: sf::Texture     = ();
-        m_ballTexture  : sf::Texture     = ();
-        m_paddle       : sf::Sprite      = ();
-        m_ball         : sf::CircleShape = sf::CircleShape(1.0f, 30);
-        m_font         : sf::Font        = ();
-        m_leftScore    : sf::Text        = ();
-        m_rightScore   : sf::Text        = ();
+        m_paddleTexture: sf::Texture                = ();
+        m_ballTexture  : sf::Texture                = ();
+        m_paddle       : sf::Sprite                 = ();
+        m_ball         : sf::Sprite                 = ();
+        m_font         : sf::Font                   = ();
+        m_leftScore    : sf::Text                   = ();
+        m_rightScore   : sf::Text                   = ();
+        m_separator    : std::array<sf::Vertex, 32> = ();
 
-        from: (width: u32) -> GameObjects = {
+        from: (width: u32, height) -> GameObjects = {
             sprites := GameObjects();
 
             paddleTexPath := TEXTURES_DIR + "/paddle.png";
@@ -58,12 +61,27 @@ pong: namespace =
                 spdlog::info("Successfully loaded font: {:?}", fontPath);
 
                 sprites.m_leftScore.setFont(sprites.m_font);
-                sprites.m_leftScore.setCharacterSize(24);
+                sprites.m_leftScore.setCharacterSize(TEXT_SIZE);
                 sprites.m_leftScore.setFillColor(sf::Color::White);
 
                 sprites.m_rightScore.setFont(sprites.m_font);
-                sprites.m_rightScore.setCharacterSize(24);
+                sprites.m_rightScore.setCharacterSize(TEXT_SIZE);
                 sprites.m_rightScore.setFillColor(sf::Color::White);
+            }
+
+            (inout v := sprites.m_separator) {
+                halfWidth:              = width.narrow<float>() / 2.0f;
+                start    : sf::Vector2f = (halfWidth, height.narrow<float>() * SEPARATOR_MARGIN);
+                end      : sf::Vector2f = (halfWidth, height.narrow<float>() * (1.0f - SEPARATOR_MARGIN));
+                deltaY   :              = (end.y - start.y) / (v.ssize() - 1).narrow<float>();
+
+                spdlog::debug("Separator: {} | {} | {}", start.y, end.y, deltaY);
+
+                (copy i := 0) while i < v.ssize() next i++ {
+                    x := halfWidth;
+                    y := start.y + i.narrow<float>() * deltaY;
+                    v[i] = sf::Vertex(sf::Vector2f(x, y), sf::Color::White);
+                }
             }
 
             return sprites;
@@ -76,17 +94,16 @@ pong: namespace =
         }
 
         initPaddle: (inout paddle: sf::Sprite, texture: sf::Texture, refSize: sf::Vector2u) = {
-            texSize := texture.getSize();
+            texSize := texture.getSize().cast<float>();
 
             texRect: sf::IntRect = ();
             if BLOCK_ASPECT_RATIO < 1.0f {
-                texRect = sf::IntRect(0, 0, texSize.x, narrow<i32>(narrow<float>(texSize.y) / BLOCK_ASPECT_RATIO));
+                texRect = sf::IntRect(0, 0, texSize.x.narrow<i32>(), narrow<i32>(texSize.y / BLOCK_ASPECT_RATIO));
             } else {
-                texRect = sf::IntRect(0, 0, narrow<i32>(narrow<float>(texSize.x) * BLOCK_ASPECT_RATIO), texSize.y);
+                texRect = sf::IntRect(0, 0, narrow<i32>(texSize.x * BLOCK_ASPECT_RATIO), texSize.y.narrow<i32>());
             }
 
             paddle = sf::Sprite(texture, texRect);
-            paddle.setTexture(texture);
             paddle.setOrigin(texRect.width.narrow<float>() / 2.0f, texRect.height.narrow<float>() / 2.0f);
             paddle.setScale(sf::Vector2f(
                 refSize.x.narrow<float>() / texRect.width.narrow<float>(),
@@ -99,10 +116,14 @@ pong: namespace =
             return widthRef.narrow<float>() * BALL_SIZE;
         }
 
-        initBall: (inout ball: sf::CircleShape, texture: sf::Texture, size: float) = {
-            ball.setTexture(texture&);
-            ball.setRadius(size / 2.0f);
-            ball.setOrigin(size / 2.0f, size / 2.0f);
+        initBall: (inout ball: sf::Sprite, texture: sf::Texture, refSize: float) = {
+            texSize:              = texture.getSize().cast<float>();
+            center : sf::Vector2f = (texSize.x / 2.0f, texSize.y / 2.0f);
+            scale  : sf::Vector2f = (refSize / texSize.x, refSize / texSize.y);
+
+            ball = sf::Sprite(texture);
+            ball.setOrigin(center);
+            ball.setScale(scale);
         }
     }
 
@@ -138,6 +159,9 @@ pong: namespace =
     WhichPaddle: @enum type = { Left; Right; }
     WhichMove  : @enum type = { Up; Down; }
 
+    // TODO: implement multithreading
+    // NOTE: multithreading is not possible for now, because there is no way to declare std::mutex as mutable
+    //       which is required in const context when locking it.
     Pong: type = {
         // Paddle : @enum @print type = { Left; Right; }   // temporary alpha limitation: an object alias cannot yet appear inside a nested type
         // Moveset: @enum @print type = { Up; Down; }
@@ -146,6 +170,11 @@ pong: namespace =
             outOfBound: WhichPaddle;
             reflect   : float;
             same      : std::monostate;
+        }
+
+        MoveInput: @struct type = {
+            m_paddle   : WhichPaddle = WhichPaddle::Left;
+            m_move     : WhichMove   = WhichMove::Up;
         }
 
         PADDLE_MARGIN: float == 0.02f;
@@ -157,13 +186,15 @@ pong: namespace =
         m_sprites      : GameObjects;
         m_state        : GameState;
         m_currentPaddle: WhichPaddle = WhichPaddle::Right;
-        m_moveQueue    : std::deque<std::pair<WhichPaddle, WhichMove>> = ();
-        m_random       : std::mt19937 = (std::time(nullptr).narrow<std::mt19937::result_type>());
+
+        m_moveQueue    : std::deque<MoveInput> = ();
+
+        m_random       : std::mt19937 = (std::time(nullptr) as std::mt19937::result_type);
 
         operator=: (out this, width: u32, height: u32) = {
             m_width   = width;
             m_height  = height;
-            m_sprites = GameObjects::from(width);
+            m_sprites = GameObjects::from(width, height);
             m_state   = GameState::from(width);
 
             initializeState();
@@ -220,13 +251,12 @@ pong: namespace =
                 else                        { paddle.m_position.y += paddle.m_speed * deltaTime; }
             };
 
-            for m_moveQueue do (movement) {
-                paddle  := movement.first;
-                moveset := movement.second;
+            for exchangeQueue() do (movement) {
+                paddle  := movement.m_paddle;
+                moveset := movement.m_move;
                 if paddle == WhichPaddle::Left { paddleMove(m_state.m_left,  moveset, deltaTime); }
                 else                           { paddleMove(m_state.m_right, moveset, deltaTime); }
             }
-            m_moveQueue.clear();
 
             (inout b := m_state.m_ball) {
                 b.m_position.x += b.m_speed * std::cos(b.m_angle.toRadians()) * deltaTime;
@@ -289,6 +319,10 @@ pong: namespace =
 
             rightScoreTransform := sf::Transform().translate(textPos(WhichPaddle::Right));
             target*.draw(m_sprites.m_rightScore, rightScoreTransform);
+
+            (copy i := 0) while i < m_sprites.m_separator.ssize() / 2 next i++ {
+                target*.draw(m_sprites.m_separator[i * 2]&, 2, sf::Lines);
+            }
         }
 
         private randomAngle: (inout this) -> float = {
@@ -356,6 +390,10 @@ pong: namespace =
 
             status.set_same();
             return status;
+        }
+
+        private exchangeQueue: (inout this) -> std::deque<MoveInput> = {
+            return std::exchange(m_moveQueue, std::deque<MoveInput>());
         }
     }
 }

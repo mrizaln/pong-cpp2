@@ -7,6 +7,24 @@
 #include <spdlog/sinks/stdout_color_sinks.h>
 #include <spdlog/spdlog.h>
 
+DeltaTimer: @value type = {
+    FloatSecond: type == std::chrono::duration<float, std::ratio<1, 1>>;
+
+    m_clock: std::chrono::steady_clock             = ();
+    m_last : std::chrono::steady_clock::time_point = m_clock.now();
+
+    reset: (inout this) = {
+        m_last = m_clock.now();
+    }
+
+    elapsed: (inout this) -> FloatSecond = {
+        now   := m_clock.now();
+        delta := now - m_last;
+        m_last = now;
+        return std::chrono::duration_cast<FloatSecond>(delta);
+    }
+}
+
 printContextInformation: (window: *sf::Window) = {
     settings := window*.getSettings();
 
@@ -49,8 +67,7 @@ main: () = {
 
     pongGame: pong::Pong = (800, 600);
 
-    now   := std::chrono::steady_clock::now();
-    delta := now - now;
+    timer: DeltaTimer = ();
 
     while window.isOpen() {
         (copy event := sf::Event()) while window.pollEvent(event) {
@@ -79,13 +96,7 @@ main: () = {
             if k(K::Up)   { p.movePaddle(P::Right, M::Up);   }
         }
 
-        newNow := std::chrono::steady_clock::now();
-        delta   = newNow - now;
-        now     = newNow;
-
-        FloatSecond: type == std::chrono::duration<float, std::ratio<1, 1>>;
-        deltaTime := std::chrono::duration_cast<FloatSecond>(delta).count();
-        pongGame.update(deltaTime);
+        pongGame.update(timer.elapsed().count());
 
         window.clear(sf::Color::Black);
 
