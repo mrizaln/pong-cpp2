@@ -17,7 +17,6 @@ endif()
 
 find_package(SFML CONFIG REQUIRED)
 find_package(spdlog CONFIG REQUIRED)
-find_package(range-v3 CONFIG REQUIRED)
 
 include(cmake/cppfront.cmake)
 
@@ -27,7 +26,7 @@ set(SOURCES source/main.cpp2 source/pong.h2)
 cppfront_compile(main
   INCLUDE_ALL_STD
   SOURCES         ${SOURCES}
-  DEPENDS         sfml::sfml spdlog::spdlog range-v3::range-v3
+  DEPENDS         sfml::sfml spdlog::spdlog
   COMPILE_FLAGS   -Wall -Wextra -Wconversion
 
   COMPILE_FLAGS   -fsanitize=address,leak,undefined
