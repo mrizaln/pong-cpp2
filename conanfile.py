@@ -1,4 +1,5 @@
 from conan import ConanFile
+from conan.tools.cmake import cmake_layout
 
 
 class Recipe(ConanFile):
@@ -7,4 +8,4 @@ class Recipe(ConanFile):
     requires = ["sfml/2.6.1", "spdlog/1.13.0"]
 
     def layout(self):
-        self.folders.generators = "conan"
+        cmake_layout(self)

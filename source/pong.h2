@@ -34,7 +34,7 @@ pong: namespace =
         m_rightScore   : sf::Text                   = ();
         m_separator    : std::array<sf::Vertex, 32> = ();
 
-        from: (width: u32, height) -> GameObjects = {
+        from: (width: u32, height: u32) -> GameObjects = {
             sprites := GameObjects();
 
             paddleTexPath := TEXTURES_DIR + "/paddle.png";
