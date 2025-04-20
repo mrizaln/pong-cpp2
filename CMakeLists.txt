@@ -11,8 +11,8 @@ set(CMAKE_COLOR_DIAGNOSTICS ON)
 # use mold if it exists in PATH
 find_program(MOLD mold)
 if(MOLD)
-  set(CMAKE_EXE_LINKER_FLAGS "-fuse-ld=mold")
-  set(CMAKE_SHARED_LINKER_FLAGS "-fuse-ld=mold")
+    set(CMAKE_EXE_LINKER_FLAGS "-fuse-ld=mold")
+    set(CMAKE_SHARED_LINKER_FLAGS "-fuse-ld=mold")
 endif()
 
 find_package(SFML CONFIG REQUIRED)

@@ -83,17 +83,17 @@ main: () = {
             }
         }
 
-        (inout p := pongGame) {
+        (copy p := pongGame&) {
             P: type == pong::WhichPaddle;
             M: type == pong::WhichMove;
             K: type == sf::Keyboard::Key;
 
-            k := :(key: K) sf::Keyboard::isKeyPressed(key);
+            k := :(key: K) = sf::Keyboard::isKeyPressed(key);
 
-            if k(K::S)    { p.movePaddle(P::Left,  M::Down); }
-            if k(K::W)    { p.movePaddle(P::Left,  M::Up);   }
-            if k(K::Down) { p.movePaddle(P::Right, M::Down); }
-            if k(K::Up)   { p.movePaddle(P::Right, M::Up);   }
+            if k(K::S)    { p*.movePaddle(P::Left,  M::Down); }
+            if k(K::W)    { p*.movePaddle(P::Left,  M::Up);   }
+            if k(K::Down) { p*.movePaddle(P::Right, M::Down); }
+            if k(K::Up)   { p*.movePaddle(P::Right, M::Up);   }
         }
 
         pongGame.update(timer.elapsed().count());

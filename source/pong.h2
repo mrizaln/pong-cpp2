@@ -8,7 +8,7 @@
 
 pong: namespace =
 {
-    narrow: <To>(from) -> To = cpp2::unsafe_narrow<To>(from);
+    narrow: <To>(from) -> To = cpp2::unchecked_narrow<To>(from);
     cast: <To, From>(from: sf::Vector2<From>) -> sf::Vector2<To> = (
         from.x.narrow<To>(),
         from.y.narrow<To>(),
