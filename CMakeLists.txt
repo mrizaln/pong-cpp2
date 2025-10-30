@@ -3,7 +3,7 @@ project(pong-cpp2 VERSION 0.0.1)
 
 include(cmake/prelude.cmake)
 
-set(CMAKE_CXX_STANDARD 20)
+set(CMAKE_CXX_STANDARD 23)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
 set(CMAKE_COLOR_DIAGNOSTICS ON)
@@ -15,9 +15,8 @@ if(MOLD)
     set(CMAKE_SHARED_LINKER_FLAGS "-fuse-ld=mold")
 endif()
 
-find_package(SFML CONFIG REQUIRED)
-find_package(spdlog CONFIG REQUIRED)
 
+include(cmake/fetched-libs.cmake) # sfml
 include(cmake/cppfront.cmake)
 
 set(SOURCES source/main.cpp2 source/pong.h2)
@@ -26,7 +25,7 @@ set(SOURCES source/main.cpp2 source/pong.h2)
 cppfront_compile(main
   INCLUDE_ALL_STD
   SOURCES         ${SOURCES}
-  DEPENDS         sfml::sfml spdlog::spdlog
+  DEPENDS         SFML::Window SFML::Graphics
   COMPILE_FLAGS   -Wall -Wextra -Wconversion
 
   COMPILE_FLAGS   -fsanitize=address,leak,undefined
