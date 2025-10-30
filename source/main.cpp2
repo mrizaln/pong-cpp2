@@ -28,7 +28,7 @@ DeltaTimer: @value type = {
 printContextInformation: (window: *sf::Window) = {
     settings := window*.getSettings();
 
-    getAttrStr := :(attr) -> _ = {
+    context_attr := :(attr) -> _ = {
         A: type == sf::ContextSettings::Attribute;
 
         if attr == A::Default { return std::string("default"); }
@@ -38,15 +38,16 @@ printContextInformation: (window: *sf::Window) = {
         if attr == A::Debug { str += "debug"; }
 
         return str;
-    };
+    }(settings.attributeFlags);
 
-    std::println("context information");
-    std::println("\tdepth bits        : {}",    settings.depthBits);
-    std::println("\tstencil bits      : {}",    settings.stencilBits);
-    std::println("\tantialiasing level: {}",    settings.antiAliasingLevel);
-    std::println("\tsrgb capable      : {}",    settings.sRgbCapable);
-    std::println("\tcontext version   : {}.{}", settings.majorVersion, settings.minorVersion);
-    std::println("\tcontext attribute : {}",    getAttrStr(settings.attributeFlags));
+    std::cout << "context information\n"
+              << "\tdepth bits        : (settings.depthBits)$\n"
+              << "\tstencil bits      : (settings.stencilBits)$\n"
+              << "\tantialiasing level: (settings.antiAliasingLevel)$\n"
+              << "\tsrgb capable      : (settings.sRgbCapable)$\n"
+              << "\tcontext version   : (settings.majorVersion)$.(settings.minorVersion)$\n"
+              << "\tcontext attribute : (context_attr)$\n"
+              << std::flush;
 }
 
 main: () = {
