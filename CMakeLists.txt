@@ -8,28 +8,20 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
 set(CMAKE_COLOR_DIAGNOSTICS ON)
 
-# use mold if it exists in PATH
-find_program(MOLD mold)
-if(MOLD)
-    set(CMAKE_EXE_LINKER_FLAGS "-fuse-ld=mold")
-    set(CMAKE_SHARED_LINKER_FLAGS "-fuse-ld=mold")
-endif()
-
-
 include(cmake/fetched-libs.cmake) # sfml
 include(cmake/cppfront.cmake)
 
 set(SOURCES source/main.cpp2 source/pong.h2)
 
 # cmake-format: off
-cppfront_compile(main
+cppfront_compile(pong
   INCLUDE_ALL_STD
   SOURCES         ${SOURCES}
   DEPENDS         SFML::Window SFML::Graphics
   COMPILE_FLAGS   -Wall -Wextra -Wconversion
 
-  COMPILE_FLAGS   -fsanitize=address,leak,undefined
-  LINK_FLAGS      -fsanitize=address,leak,undefined
+  # COMPILE_FLAGS   -fsanitize=address,leak,undefined
+  # LINK_FLAGS      -fsanitize=address,leak,undefined
 
   # COMPILE_FLAGS -fsanitize=thread
   # LINK_FLAGS    -fsanitize=thread
