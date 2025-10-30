@@ -4,8 +4,8 @@
 
 #include <SFML/Window.hpp>
 #include <SFML/Graphics.hpp>
-#include <spdlog/sinks/stdout_color_sinks.h>
-#include <spdlog/spdlog.h>
+
+#include <print>
 
 DeltaTimer: @value type = {
     FloatSecond: type == std::chrono::duration<float, std::ratio<1, 1>>;
@@ -40,25 +40,18 @@ printContextInformation: (window: *sf::Window) = {
         return str;
     };
 
-    spdlog::debug("context information");
-    spdlog::debug("\tdepth bits        : {}",    settings.depthBits);
-    spdlog::debug("\tstencil bits      : {}",    settings.stencilBits);
-    spdlog::debug("\tantialiasing level: {}",    settings.antialiasingLevel);
-    spdlog::debug("\tsrgb capable      : {}",    settings.sRgbCapable);
-    spdlog::debug("\tcontext version   : {}.{}", settings.majorVersion, settings.minorVersion);
-    spdlog::debug("\tcontext attribute : {}",    getAttrStr(settings.attributeFlags));
+    std::println("context information");
+    std::println("\tdepth bits        : {}",    settings.depthBits);
+    std::println("\tstencil bits      : {}",    settings.stencilBits);
+    std::println("\tantialiasing level: {}",    settings.antiAliasingLevel);
+    std::println("\tsrgb capable      : {}",    settings.sRgbCapable);
+    std::println("\tcontext version   : {}.{}", settings.majorVersion, settings.minorVersion);
+    std::println("\tcontext attribute : {}",    getAttrStr(settings.attributeFlags));
 }
 
 main: () = {
-    spdlog::set_default_logger(spdlog::stderr_color_st("logger"));
-    spdlog::set_pattern("[%H:%M:%S %z] [%^-%L-%$] %v");
-    spdlog::set_level(spdlog::level::debug);
-
-    settings: sf::ContextSettings = ();
-    settings.antialiasingLevel = 8;
-
-    windowSize: sf::VideoMode    = (800, 600);
-    window    : sf::RenderWindow = (windowSize, "Learn (SFML + CPP2): Pong", sf::Style::Titlebar, settings);
+    windowSize: sf::VideoMode    = (sf::Vector2u(800, 600));
+    window    : sf::RenderWindow = (windowSize, "Learn (SFML + CPP2): Pong", sf::Style::Titlebar);
 
     window.setVerticalSyncEnabled(true);
     window.setKeyRepeatEnabled(false);
@@ -70,16 +63,16 @@ main: () = {
     timer: DeltaTimer = ();
 
     while window.isOpen() {
-        (copy event := sf::Event()) while window.pollEvent(event) {
+        (copy event := window.pollEvent()) while (event) next (event = window.pollEvent()) {
             E: type == sf::Event;
             K: type == sf::Keyboard::Key;
 
-            if event.type == E::Closed { window.close(); }
+            if event*.is<E::Closed>() { window.close(); }
 
-            if event.type == E::KeyPressed {
-                if event.key.code == K::Q     { window.close();         }
-                if event.key.code == K::R     { pongGame.reset();       }
-                if event.key.code == K::Space { pongGame.togglePause(); }
+            (copy key := event*.getIf<E::KeyPressed>()) if key {
+                if key*.code == K::Q     { window.close();         }
+                if key*.code == K::R     { pongGame.reset();       }
+                if key*.code == K::Space { pongGame.togglePause(); }
             }
         }
 
