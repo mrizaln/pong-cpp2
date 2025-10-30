@@ -8,14 +8,18 @@ A bare bone implementation of Pong game written in Cpp2 ([Cppfront](https://gith
 
 - C++20 capable compilers
 - CMake 3.23+
-- Conan 2
 
 ## Building
 
 ```sh
-conan install . --build missing -s build_type=Release
-cmake --preset conan-release                              # use conan-default for windows
-cmake --build --preset conan-release
+cmake -S . -B build -DCMAKE_BUILD_TYPE=Release      # -G Ninja
+cmake --build build
+```
+
+Then run the executable:
+
+```sh
+./build/pong
 ```
 
 ## Controls
