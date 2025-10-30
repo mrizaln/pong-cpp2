@@ -4,7 +4,9 @@ include(FetchContent)
 FetchContent_Declare(
     cppfront
     GIT_REPOSITORY https://github.com/hsutter/cppfront.git
-    GIT_TAG b2d40209e694f74458ffaf15d8b884300fc405cc
+    GIT_TAG 1a6062a366c4e58ede578fbce02ef271245685a8
+    GIT_SHALLOW ON
+    # GIT_TAG 53504bb61f6b04cb7245bc6bbe533af4c2124016
     GIT_PROGRESS TRUE
 )
 FetchContent_MakeAvailable(cppfront)
