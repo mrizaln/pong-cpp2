@@ -5,8 +5,6 @@
 #include <SFML/Window.hpp>
 #include <SFML/Graphics.hpp>
 
-#include <print>
-
 DeltaTimer: @value type = {
     FloatSecond: type == std::chrono::duration<float, std::ratio<1, 1>>;
 
